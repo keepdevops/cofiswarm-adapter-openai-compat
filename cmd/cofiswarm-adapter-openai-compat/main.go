@@ -12,6 +12,7 @@ import (
 
 	"github.com/keepdevops/cofiswarm-adapter-openai-compat/internal/bus"
 	"github.com/keepdevops/cofiswarm-adapter-openai-compat/internal/httpapi"
+	"github.com/keepdevops/cofiswarm-observer-sdk/pkg/buspresence"
 	"github.com/keepdevops/cofiswarm-observer-sdk/pkg/servicecomponent"
 )
 
@@ -51,6 +52,14 @@ func main() {
 		}
 	}
 
+	// Carrier presence (broker-free, default-off via COFISWARM_BRIDGE_URL): appear in the
+	// observer live roster over the zmq-bridge without needing a NATS broker.
+	ID := "adapter-" + adapterName
+	stopPresence := func() {}
+	if bridge := os.Getenv("COFISWARM_BRIDGE_URL"); bridge != "" {
+		stopPresence = buspresence.StartPresence(bridge, ID, map[string]any{"name": ID})
+	}
+
 	httpSrv := &http.Server{Addr: srv.Addr(), Handler: srv.Handler()}
 	go func() {
 		log.Printf("adapter-%s on %s", adapterName, srv.Addr())
@@ -67,6 +76,7 @@ func main() {
 	if comp != nil {
 		comp.Shutdown() // goodbye -> offline
 	}
+	stopPresence()
 	shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := httpSrv.Shutdown(shutCtx); err != nil {
